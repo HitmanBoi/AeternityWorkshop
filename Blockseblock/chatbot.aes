@@ -1,0 +1,69 @@
+// Import necessary modules (if any)
+// import ...
+
+// Define a DeFiChatbot contract
+contract DeFiChatbot =
+  record state = {
+    balances : map(address, int),
+    collateral : map(address, int),
+    borrowLimit : int,
+    // Add other state variables as needed
+  }
+
+// Initialize the DeFiChatbot contract
+  public stateful function init(borrowLimit : int) : state =
+    { balances = {}, collateral = {}, borrowLimit = borrowLimit }
+
+// Function to get user balance
+  public stateful function getBalance(address : address) : int =
+    switch(Map.lookup(address, state.balances))
+      None    => 0
+      Some(x)  => x
+
+// Function to get user collateral
+  public stateful function getCollateral(address : address) : int =
+    switch(Map.lookup(address, state.collateral))
+      None    => 0
+      Some(x)  => x
+
+// Function to deposit tokens
+  public stateful function deposit(amount : int) =
+    require(amount > 0, "Amount must be greater than 0")
+
+    let userBalance = getBalance(Call.caller)
+    put(state{ balances[Call.caller] = userBalance + amount })
+
+// Function to withdraw tokens
+  public stateful function withdraw(amount : int) =
+    require(amount > 0, "Amount must be greater than 0")
+    require(getBalance(Call.caller) >= amount, "Insufficient balance")
+
+    let userBalance = getBalance(Call.caller)
+    put(state{ balances[Call.caller] = userBalance - amount })
+
+// Function to add collateral
+  public stateful function addCollateral(amount : int) =
+    require(amount > 0, "Amount must be greater than 0")
+    require(getBalance(Call.caller) >= amount, "Insufficient balance")
+
+    let userBalance = getBalance(Call.caller)
+    let userCollateral = getCollateral(Call.caller)
+    put(state{ balances[Call.caller] = userBalance - amount })
+    put(state{ collateral[Call.caller] = userCollateral + amount })
+
+// Function to borrow tokens
+  public stateful function borrow(amount : int) =
+    require(amount > 0, "Amount must be greater than 0")
+    require(getCollateral(Call.caller) >= amount, "Insufficient collateral")
+    require(state.borrowLimit >= amount, "Exceeds borrow limit")
+
+    let userBalance = getBalance(Call.caller)
+    put(state{ balances[Call.caller] = userBalance + amount })
+
+// Function to repay borrowed tokens
+  public stateful function repay(amount : int) =
+    require(amount > 0, "Amount must be greater than 0")
+    require(getBalance(Call.caller) >= amount, "Insufficient balance")
+
+    let userBalance = getBalance(Call.caller)
+    put(state{ balances[Call.caller] = userBalance - amount })
