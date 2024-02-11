@@ -1,69 +1,67 @@
-// Import necessary modules (if any)
-// import ...
-
-// Define a DeFiChatbot contract
 contract DeFiChatbot =
-  record state = {
-    balances : map(address, int),
-    collateral : map(address, int),
-    borrowLimit : int,
-    // Add other state variables as needed
+
+  record asset = {
+    name : string,
+    balance : int,
+    price : int
   }
 
-// Initialize the DeFiChatbot contract
-  public stateful function init(borrowLimit : int) : state =
-    { balances = {}, collateral = {}, borrowLimit = borrowLimit }
+  record state = {
+    owner : address,
+    chatbotAddress : address,
+    assets : map(string, asset),
+    borrowAllowance : map(address, int) 
+  }
 
-// Function to get user balance
-  public stateful function getBalance(address : address) : int =
-    switch(Map.lookup(address, state.balances))
-      None    => 0
-      Some(x)  => x
+  stateful entrypoint init(ownerAddress : address, chatbotAddress : address) =
+    { owner = ownerAddress,
+      chatbotAddress = chatbotAddress,
+      assets = {},
+      borrowAllowance = {} }
 
-// Function to get user collateral
-  public stateful function getCollateral(address : address) : int =
-    switch(Map.lookup(address, state.collateral))
-      None    => 0
-      Some(x)  => x
+  stateful entrypoint addAsset(name : string, initialBalance : int, price : int) =
+    require(Call.caller == state.owner, "Only the owner can add assets")
+    let newAsset = { name = name, balance = initialBalance, price = price }
+    put(state{ assets[name] = newAsset })
 
-// Function to deposit tokens
-  public stateful function deposit(amount : int) =
-    require(amount > 0, "Amount must be greater than 0")
+  stateful entrypoint buyAsset(name : string, quantity : int) =
+    let asset = Map.lookup(name, state.assets)
+    switch(asset)
+      None => abort("Asset not found")
+      Some(actualAsset) =>
+        let totalCost = actualAsset.price * quantity
+        require(Call.value >= totalCost, "Insufficient funds to buy")
+        put(state{ assets[name].balance = actualAsset.balance + quantity })
+        Chain.spend(state.chatbotAddress, totalCost)
+  
+  stateful entrypoint sellAsset(name : string, quantity: int) =
+    let asset = Map.lookup(name, state.assets)
+    switch(asset)
+      None => abort("Asset not found")
+      Some(actualAsset) =>
+        require(actualAsset.balance >= quantity, "Insufficient balance to sell")
+        let totalIncome = actualAsset.price * quantity
+        put(state{ assets[name].balance = actualAsset.balance - quantity })
+        Chain.spend(Call.caller, totalIncome)
+  
+  stateful entrypoint enableBorrowing() =
+    let updatedAllowance = state.borrowAllowance{ [Call.caller] = 1 }
+    put(state{ borrowAllowance = updatedAllowance })
+  
+  stateful entrypoint borrowAsset(name : string, quantity: int) =
+    let asset = Map.lookup(name, state.assets)
+    switch(asset)
+      None => abort("Asset not found")
+      Some(actualAsset) =>
+        require(state.borrowAllowance[Call.caller] == 1, "Borrowing not enabled for the caller")
+        put(state{ assets[name].balance = actualAsset.balance + quantity })
 
-    let userBalance = getBalance(Call.caller)
-    put(state{ balances[Call.caller] = userBalance + amount })
+  entrypoint getAssetBalance(name : string) : int =
+    switch(Map.lookup(name, state.assets))
+      None => abort("Asset not found")
+      Some(asset) => asset.balance
 
-// Function to withdraw tokens
-  public stateful function withdraw(amount : int) =
-    require(amount > 0, "Amount must be greater than 0")
-    require(getBalance(Call.caller) >= amount, "Insufficient balance")
-
-    let userBalance = getBalance(Call.caller)
-    put(state{ balances[Call.caller] = userBalance - amount })
-
-// Function to add collateral
-  public stateful function addCollateral(amount : int) =
-    require(amount > 0, "Amount must be greater than 0")
-    require(getBalance(Call.caller) >= amount, "Insufficient balance")
-
-    let userBalance = getBalance(Call.caller)
-    let userCollateral = getCollateral(Call.caller)
-    put(state{ balances[Call.caller] = userBalance - amount })
-    put(state{ collateral[Call.caller] = userCollateral + amount })
-
-// Function to borrow tokens
-  public stateful function borrow(amount : int) =
-    require(amount > 0, "Amount must be greater than 0")
-    require(getCollateral(Call.caller) >= amount, "Insufficient collateral")
-    require(state.borrowLimit >= amount, "Exceeds borrow limit")
-
-    let userBalance = getBalance(Call.caller)
-    put(state{ balances[Call.caller] = userBalance + amount })
-
-// Function to repay borrowed tokens
-  public stateful function repay(amount : int) =
-    require(amount > 0, "Amount must be greater than 0")
-    require(getBalance(Call.caller) >= amount, "Insufficient balance")
-
-    let userBalance = getBalance(Call.caller)
-    put(state{ balances[Call.caller] = userBalance - amount })
+  entrypoint getAssetPrice(name : string) : int =
+    switch(Map.lookup(name, state.assets))
+      None => abort("Asset not found")
+      Some(asset) => asset.price
